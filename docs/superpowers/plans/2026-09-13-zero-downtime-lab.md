@@ -1098,7 +1098,7 @@ test('백분위수는 응답을 받은 요청만으로 계산한다', () => {
   b.push(rec(1_000_200, 'failure', { failureType: 'timeout', durationMs: null }))
   const bucket = b.flush()
   assert.equal(bucket.maxMs, 300)
-  assert.equal(bucket.p50, 300) // 표본 [100, 300] 의 nearest-rank p50
+  assert.equal(bucket.p50, 100) // 표본 [100, 300] 의 nearest-rank p50 = ceil(0.5*2)-1 = 0번째
 })
 
 test('slow 는 성공한 요청만 센다', () => {
