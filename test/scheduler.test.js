@@ -78,3 +78,34 @@ test('onFire 가 예외를 던져도 스케줄러는 계속 돈다', async () =>
   assert.ok(s.stats().fired >= 3)
   assert.equal(s.stats().inFlight, 0, '예외가 나도 in-flight 는 해제돼야 한다')
 })
+
+test('이벤트 루프 지연으로 인해 놓친 슬롯은 dropped로 센다', async () => {
+  const seen = []
+  let isFirst = true
+  const s = createScheduler({ intervalMs: 10, maxInFlight: 1000 })
+
+  s.start(async (seq) => {
+    seen.push(seq)
+
+    // 첫 요청에서 이벤트 루프를 블로킹한다 (120ms 정도)
+    if (isFirst) {
+      isFirst = false
+      const end = Date.now() + 120
+      while (Date.now() < end) {
+        // 바쁜 대기
+      }
+    }
+  })
+
+  await sleep(300)
+  s.stop()
+
+  // 이벤트 루프 지연으로 인해 dropped가 올라간다
+  assert.ok(s.stats().dropped >= 5, `dropped ${s.stats().dropped}는 너무 적다`)
+
+  // 발사된 seq는 1부터 연속이다 (구멍이 없다)
+  assert.deepEqual(seen, seen.map((_, i) => i + 1))
+
+  // 발사된 요청 수는 stats().fired와 같다
+  assert.equal(seen.length, s.stats().fired)
+})
