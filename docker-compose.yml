@@ -1,0 +1,7 @@
+services:
+  lab:
+    build: .
+    # 호스트 포트가 이미 점유돼 있으면 왼쪽 숫자만 바꾸면 된다
+    ports:
+      - "${PORT:-9376}:9376"
+    restart: unless-stopped
