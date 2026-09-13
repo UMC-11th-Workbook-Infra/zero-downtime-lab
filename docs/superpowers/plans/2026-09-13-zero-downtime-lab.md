@@ -38,7 +38,7 @@
 - Create: `Dockerfile`
 - Create: `docker-compose.yml`
 - Create: `.dockerignore`
-- Create: `.gitignore`
+- Verify: `.gitignore` (이미 존재한다 — 아래 내용이 들어 있는지 확인만 하고, 없으면 추가한다. `.superpowers/` 줄은 지우지 말 것)
 - Create: `public/.gitkeep` (Dockerfile 의 `COPY public` 이 성립하려면 이 시점에 디렉터리가 있어야 한다. Task 15에서 실제 화면으로 채운다)
 - Test: `test/server.test.js`
 
@@ -174,11 +174,12 @@ docs
 .git
 ```
 
-`.gitignore`:
+`.gitignore` — 이미 아래와 같이 있어야 한다 (없는 줄만 추가한다):
 
 ```
 node_modules
 *.log
+.superpowers/
 ```
 
 빈 `public/` 디렉터리도 만들어 둔다. Dockerfile 이 이 경로를 복사하므로 없으면 빌드가 깨진다.
