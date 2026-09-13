@@ -3007,6 +3007,7 @@ export function createApp({ store = createRunStore({ max: 10 }), proberFactory =
     stream.send('summary', run.summary())
 
     let bucketId = run.buckets().length
+    /** @type {Array<() => void>} 구독 해제 함수들 */
     const off = [
       run.on('bucket', (bucket) => { bucketId += 1; stream.send('bucket', bucket, bucketId) }),
       run.on('outage', (outage) => stream.send('outage', outage)),
@@ -3014,8 +3015,16 @@ export function createApp({ store = createRunStore({ max: 10 }), proberFactory =
       run.on('state', (state) => stream.send('state', state)),
     ]
 
+    // 실행이 끝나면 마지막 요약을 보내고 연결을 닫는다
+    off.push(run.on('state', (state) => {
+      if (state.status === 'running') return
+      stream.send('summary', run.summary())
+      finish()
+    }))
+
     function finish() {
-      off.forEach((unsubscribe) => unsubscribe())
+      // 구독을 전부 해제한다. 두 번 불려도 안전하다.
+      while (off.length > 0) off.pop()()
       stream.close()
     }
 
@@ -3024,12 +3033,6 @@ export function createApp({ store = createRunStore({ max: 10 }), proberFactory =
       finish()
       return
     }
-
-    run.on('state', (state) => {
-      if (state.status === 'running') return
-      stream.send('summary', run.summary())
-      finish()
-    })
 
     req.on('close', finish)
   })
@@ -3549,7 +3552,6 @@ export function buildScenario(values) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>배포 유실 측정</title>
-  <link rel="stylesheet" href="vendor/uPlot.min.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -3618,7 +3620,6 @@ export function buildScenario(values) {
     <section class="panel" id="result" hidden>
       <div id="warnings"></div>
       <div id="tiles" class="tiles"></div>
-      <div id="chart" class="chart"></div>
       <h3>순단 구간</h3>
       <ul id="outages" class="outages"><li class="empty">아직 끊긴 구간이 없습니다.</li></ul>
       <div class="actions">
@@ -3628,7 +3629,6 @@ export function buildScenario(values) {
     </section>
   </main>
 
-  <script src="vendor/uPlot.iife.min.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>
@@ -4100,6 +4100,7 @@ git commit -m "feat: 요약 타일, 순단 목록, 경고 배너"
 - Create: `public/chart.js`
 - Create: `public/vendor/uPlot.iife.min.js` (벤더링)
 - Create: `public/vendor/uPlot.min.css` (벤더링)
+- Modify: `public/index.html` (uPlot 링크·스크립트 태그와 `#chart` 컨테이너를 여기서 추가한다. Task 15는 아직 없는 파일을 참조하지 않는다)
 - Modify: `package.json` (`uplot` devDependency와 `vendor` 스크립트)
 - Modify: `public/styles.css`
 - Test: `test/chart-data.test.js`
@@ -4187,6 +4188,26 @@ cp node_modules/uplot/dist/uPlot.min.css public/vendor/
 
 ```json
 "vendor": "cp node_modules/uplot/dist/uPlot.iife.min.js node_modules/uplot/dist/uPlot.min.css public/vendor/"
+```
+
+`public/index.html` 에 세 군데를 더한다.
+
+`<head>` 의 `styles.css` 링크 **앞**에:
+
+```html
+  <link rel="stylesheet" href="vendor/uPlot.min.css">
+```
+
+`#tiles` 와 `<h3>순단 구간</h3>` **사이**에:
+
+```html
+      <div id="chart" class="chart"></div>
+```
+
+`app.js` 모듈 스크립트 **앞**에 (uPlot 이 전역으로 먼저 올라와야 한다):
+
+```html
+  <script src="vendor/uPlot.iife.min.js"></script>
 ```
 
 `public/lib/chart-data.js`:
