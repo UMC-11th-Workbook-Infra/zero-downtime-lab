@@ -67,3 +67,19 @@ test('reset 이후에는 이전 실행과 같은 시작 시각도 다시 추가�
   assert.equal(list.add({ ...outageA }), true)
   assert.equal(list.all().length, 1)
 })
+
+test('all()이 내준 참조를 이미 들고 있어도 reset 하면 그 참조가 비워진다', () => {
+  const list = createOutageList()
+  list.add(outageA)
+  list.add(outageB)
+
+  // 차트 같은 다른 소비자가 all() 의 참조를 미리 들고 있는 상황을 흉내낸다
+  const held = list.all()
+  assert.equal(held.length, 2)
+
+  list.reset()
+
+  // reset() 이 배열을 새로 바꿔치기했다면 이 참조는 여전히 길이 2로 남는다.
+  // 제자리에서 비워야만 이미 나눠준 참조도 함께 비워진다.
+  assert.equal(held.length, 0)
+})

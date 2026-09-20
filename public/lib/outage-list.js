@@ -9,10 +9,10 @@
  * 상태를 한 곳에 모아 두면 이 두 실수가 구조적으로 불가능해진다.
  */
 export function createOutageList() {
-  let outages = []
+  const items = []
   // startTs 로 중복을 가려낸다. 순단 검출기는 실행 하나 안에서
   // 같은 startTs 를 두 번 내보내지 않으므로 안전한 키다.
-  let seenStartTs = new Set()
+  const seenStartTs = new Set()
   // 이미 그린 개수. 배열과 같은 객체 안에 있어서 실행이 바뀔 때 함께 리셋된다.
   let rendered = 0
 
@@ -21,26 +21,33 @@ export function createOutageList() {
     add(outage) {
       if (seenStartTs.has(outage.startTs)) return false
       seenStartTs.add(outage.startTs)
-      outages.push(outage)
+      items.push(outage)
       return true
     },
     /** 아직 화면에 그리지 않은 순단만 꺼내고, 그린 것으로 표시한다. */
     takeUnrendered() {
-      const unrendered = outages.slice(rendered)
-      rendered = outages.length
+      const unrendered = items.slice(rendered)
+      rendered = items.length
       return unrendered
     },
     /** 지금까지 쌓인 순단 전체 */
     all() {
-      return outages
+      return items
     },
     isEmpty() {
-      return outages.length === 0
+      return items.length === 0
     },
-    /** 새 실행을 시작할 때 호출한다. 목록, 중복 검사, 렌더 위치를 함께 비운다. */
+    /**
+     * 새 실행을 시작할 때 호출한다. 목록, 중복 검사, 렌더 위치를 함께 비운다.
+     *
+     * 배열을 새로 만들지 않고 제자리에서 비운다 — all() 이 내부 배열의
+     * 참조를 그대로 내주기 때문에, 여기서 새 배열로 바꿔치기하면 그
+     * 참조를 이미 들고 있는 쪽(예: 차트)은 리셋을 못 보고 이전 실행의
+     * 순단을 계속 들고 있게 된다.
+     */
     reset() {
-      outages = []
-      seenStartTs = new Set()
+      items.length = 0
+      seenStartTs.clear()
       rendered = 0
     },
   }
