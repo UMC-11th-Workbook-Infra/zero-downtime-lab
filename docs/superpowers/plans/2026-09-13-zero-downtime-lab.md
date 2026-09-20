@@ -3116,7 +3116,7 @@ const scenario = {
   target: {
     url: 'https://api.example.com/users/signup',
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Request-Id': '{{uuid}}' },
     body: '{"email":"lab-{{uuid}}@test.local","nickname":"u{{counter}}","at":{{timestamp}}}',
     timeoutMs: 5000,
   },
@@ -3172,6 +3172,13 @@ test('바디의 백틱과 달러 중괄호를 이스케이프한다', () => {
   assert.ok(toK6Script(tricky).includes('\\${notATemplate}'))
 })
 
+test('헤더의 치환자도 k6 표현식으로 바뀐다', () => {
+  const out = toK6Script(scenario)
+  // JSON.stringify 로 찍으면 {{uuid}} 가 문자 그대로 남는다
+  assert.ok(out.includes('"X-Request-Id"'))
+  assert.ok(/"X-Request-Id":\s*`\$\{uuid\(\)\}`/.test(out), '헤더 값이 템플릿 리터럴로 변환돼야 한다')
+})
+
 test('GET 에는 바디를 붙이지 않는다', () => {
   const get = { ...scenario, target: { ...scenario.target, method: 'GET', body: '' } }
   assert.ok(toK6Script(get).includes('http.get'))
@@ -3203,6 +3210,21 @@ function toTemplateLiteralBody(text) {
     .replace(/\{\{counter\}\}/g, '${__VU}_${__ITER}')
     .replace(/\{\{timestamp\}\}/g, '${Date.now()}')
     .replace(/\{\{random\}\}/g, '${randomToken()}')
+}
+
+/**
+ * 헤더 맵을 k6 스크립트의 객체 리터럴로 만든다.
+ *
+ * 값도 바디와 똑같이 템플릿 리터럴로 감싼다. 스펙상 치환자는
+ * 바디뿐 아니라 헤더에서도 동작하므로, JSON.stringify 로 그냥 찍으면
+ * {{uuid}} 가 문자 그대로 남아 요청 헤더에 리터럴로 실려 나간다.
+ */
+function toHeadersLiteral(headers) {
+  const entries = Object.entries(headers ?? {})
+  if (entries.length === 0) return '{}'
+  const lines = entries.map(([key, value]) =>
+    `      ${JSON.stringify(key)}: \`${toTemplateLiteralBody(value)}\``)
+  return `{\n${lines.join(',\n')}\n    }`
 }
 
 /**
@@ -3254,7 +3276,7 @@ export const options = {
 
 const SUCCESS_CODES = ${codes}
 
-/** 랩의 {{uuid}} 에 대응한다 */
+/** 랩의 uuid 치환자에 대응한다 */
 function uuid() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0
@@ -3263,14 +3285,14 @@ function uuid() {
   })
 }
 
-/** 랩의 {{random}} 에 대응한다 */
+/** 랩의 random 치환자에 대응한다 */
 function randomToken() {
   return Math.random().toString(36).slice(2, 10)
 }
 
 export default function () {
   const params = {
-    headers: ${JSON.stringify(headers ?? {}, null, 4).replace(/\n/g, '\n    ')},
+    headers: ${toHeadersLiteral(headers)},
     timeout: '${timeoutMs}ms',
     redirects: 0, // 3xx 를 따라가지 않는다. 랩과 판정 기준을 맞추기 위해서다.
   }
