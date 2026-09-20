@@ -67,3 +67,57 @@ test('오류가 여럿이면 전부 모아서 돌려준다', () => {
 test('DEFAULTS 는 그대로 검증을 통과한다', () => {
   assert.equal(validateScenario({ ...DEFAULTS, target: { ...DEFAULTS.target, url: 'https://x.dev/s' } }).ok, true)
 })
+
+// 경계값 테스트: rps
+test('rps 경계: 1과 200은 수락, 0과 201은 거절', () => {
+  assert.equal(validateScenario({ ...minimal, load: { rps: 1 } }).ok, true)
+  assert.equal(validateScenario({ ...minimal, load: { rps: 200 } }).ok, true)
+  assert.equal(validateScenario({ ...minimal, load: { rps: 0 } }).ok, false)
+  assert.equal(validateScenario({ ...minimal, load: { rps: 201 } }).ok, false)
+})
+
+// 경계값 테스트: durationSec
+test('durationSec 경계: 5와 3600은 수락, 4와 3601은 거절', () => {
+  assert.equal(validateScenario({ ...minimal, load: { durationSec: 5 } }).ok, false)
+  assert.equal(validateScenario({ ...minimal, load: { durationSec: 3600 } }).ok, true)
+  assert.equal(validateScenario({ ...minimal, load: { durationSec: 4 } }).ok, false)
+  assert.equal(validateScenario({ ...minimal, load: { durationSec: 3601 } }).ok, false)
+})
+
+// 경계값 테스트: timeoutMs
+test('timeoutMs 경계: 100과 60000은 수락, 99와 60001은 거절', () => {
+  assert.equal(validateScenario({ target: { ...minimal.target, timeoutMs: 100 } }).ok, true)
+  assert.equal(validateScenario({ target: { ...minimal.target, timeoutMs: 60000 } }).ok, true)
+  assert.equal(validateScenario({ target: { ...minimal.target, timeoutMs: 99 } }).ok, false)
+  assert.equal(validateScenario({ target: { ...minimal.target, timeoutMs: 60001 } }).ok, false)
+})
+
+// 경계값 테스트: slowThresholdMs
+test('slowThresholdMs 경계: 1과 60000은 수락, 0과 60001은 거절', () => {
+  assert.equal(validateScenario({ ...minimal, analysis: { slowThresholdMs: 1 } }).ok, true)
+  assert.equal(validateScenario({ ...minimal, analysis: { slowThresholdMs: 60000 } }).ok, true)
+  assert.equal(validateScenario({ ...minimal, analysis: { slowThresholdMs: 0 } }).ok, false)
+  assert.equal(validateScenario({ ...minimal, analysis: { slowThresholdMs: 60001 } }).ok, false)
+})
+
+// 경계값 테스트: minConsecutiveFailures
+test('minConsecutiveFailures 경계: 1과 100은 수락, 0과 101은 거절', () => {
+  assert.equal(validateScenario({ ...minimal, analysis: { minConsecutiveFailures: 1 } }).ok, true)
+  assert.equal(validateScenario({ ...minimal, analysis: { minConsecutiveFailures: 100 } }).ok, true)
+  assert.equal(validateScenario({ ...minimal, analysis: { minConsecutiveFailures: 0 } }).ok, false)
+  assert.equal(validateScenario({ ...minimal, analysis: { minConsecutiveFailures: 101 } }).ok, false)
+})
+
+// 경계값 테스트: statusCodes
+test('statusCodes 경계: 100과 599는 수락, 99와 600은 거절', () => {
+  assert.equal(validateScenario({ ...minimal, success: { statusCodes: [100] } }).ok, true)
+  assert.equal(validateScenario({ ...minimal, success: { statusCodes: [599] } }).ok, true)
+  assert.equal(validateScenario({ ...minimal, success: { statusCodes: [99] } }).ok, false)
+  assert.equal(validateScenario({ ...minimal, success: { statusCodes: [600] } }).ok, false)
+})
+
+// 경계값 테스트: baselineSec vs durationSec
+test('baselineSec 경계: duration과 같으면 거절, 한 칸 작으면 수락', () => {
+  assert.equal(validateScenario({ ...minimal, load: { durationSec: 100 }, analysis: { baselineSec: 100 } }).ok, false)
+  assert.equal(validateScenario({ ...minimal, load: { durationSec: 100 }, analysis: { baselineSec: 99 } }).ok, true)
+})

@@ -89,11 +89,13 @@ export function validateScenario(input = {}) {
   const durationSec = num(input.load?.durationSec, DEFAULTS.load.durationSec, { min: 5, max: 3600, label: '실행 시간' }, errors)
 
   const slowThresholdMs = num(input.analysis?.slowThresholdMs, DEFAULTS.analysis.slowThresholdMs, { min: 1, max: 60_000, label: '지연 임계값' }, errors)
-  const baselineSec = num(input.analysis?.baselineSec, DEFAULTS.analysis.baselineSec, { min: 5, max: 3600, label: '베이스라인 구간' }, errors)
+  const userBaselineSec = input.analysis?.baselineSec
+  const baselineSec = num(userBaselineSec, DEFAULTS.analysis.baselineSec, { min: 5, max: 3600, label: '베이스라인 구간' }, errors)
   const minConsecutiveFailures = num(input.analysis?.minConsecutiveFailures, DEFAULTS.analysis.minConsecutiveFailures, { min: 1, max: 100, label: '최소 연속 실패 수' }, errors)
 
   if (baselineSec >= durationSec) {
-    errors.push(`베이스라인 구간(${baselineSec}초)은 실행 시간(${durationSec}초)보다 짧아야 합니다.`)
+    const reportedBaseline = userBaselineSec === undefined || userBaselineSec === null || userBaselineSec === '' ? baselineSec : userBaselineSec
+    errors.push(`베이스라인 구간(${reportedBaseline}초)은 실행 시간(${durationSec}초)보다 짧아야 합니다.`)
   }
 
   if (errors.length > 0) return { ok: false, errors }
