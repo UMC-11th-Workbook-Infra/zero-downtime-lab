@@ -77,11 +77,24 @@ test('rps 경계: 1과 200은 수락, 0과 201은 거절', () => {
 })
 
 // 경계값 테스트: durationSec
-test('durationSec 경계: 5와 3600은 수락, 4와 3601은 거절', () => {
-  assert.equal(validateScenario({ ...minimal, load: { durationSec: 5 } }).ok, false)
-  assert.equal(validateScenario({ ...minimal, load: { durationSec: 3600 } }).ok, true)
-  assert.equal(validateScenario({ ...minimal, load: { durationSec: 4 } }).ok, false)
-  assert.equal(validateScenario({ ...minimal, load: { durationSec: 3601 } }).ok, false)
+test('durationSec 범위: 실행 시간의 최소 유효값 6과 최대값 3600', () => {
+  // durationSec: 4는 범위 미만
+  const below = validateScenario({ ...minimal, load: { durationSec: 4 }, analysis: { baselineSec: 5 } })
+  assert.equal(below.ok, false)
+  assert.ok(below.errors.some((e) => e.includes('실행 시간')))
+
+  // durationSec: 6, baselineSec: 5는 최소 유효값
+  const minValid = validateScenario({ ...minimal, load: { durationSec: 6 }, analysis: { baselineSec: 5 } })
+  assert.equal(minValid.ok, true)
+
+  // durationSec: 3600은 최대값
+  const max = validateScenario({ ...minimal, load: { durationSec: 3600 } })
+  assert.equal(max.ok, true)
+
+  // durationSec: 3601은 범위 초과
+  const above = validateScenario({ ...minimal, load: { durationSec: 3601 }, analysis: { baselineSec: 30 } })
+  assert.equal(above.ok, false)
+  assert.ok(above.errors.some((e) => e.includes('실행 시간')))
 })
 
 // 경계값 테스트: timeoutMs
