@@ -50,7 +50,9 @@ test('flush 이후에도 계속 쓸 수 있다', () => {
   const b = createSequenceBuffer({})
   b.push(r(2))
   b.flush()
-  assert.deepEqual(seqs(b.push(r(6))), [6])
+  // flush 는 nextSeq 를 마지막으로 내보낸 seq 다음으로 옮긴다.
+  // 그 자리에서 이어지는 레코드는 곧바로 나와야 한다.
+  assert.deepEqual(seqs(b.push(r(3))), [3])
 })
 
 test('firstSeq 를 지정할 수 있다', () => {

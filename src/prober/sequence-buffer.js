@@ -12,7 +12,6 @@
  */
 export function createSequenceBuffer({ firstSeq = 1 } = {}) {
   let nextSeq = firstSeq
-  let justFlushed = false
   /** @type {Map<number, object>} */
   const held = new Map()
 
@@ -23,12 +22,6 @@ export function createSequenceBuffer({ firstSeq = 1 } = {}) {
      */
     push(record) {
       held.set(record.seq, record)
-
-      // flush 직후 첫 push에서 새로운 seq 시작을 감지하면 nextSeq 조정
-      if (justFlushed && held.size === 1) {
-        nextSeq = record.seq
-        justFlushed = false
-      }
 
       const ready = []
       while (held.has(nextSeq)) {
@@ -47,7 +40,6 @@ export function createSequenceBuffer({ firstSeq = 1 } = {}) {
       const rest = [...held.values()].sort((a, b) => a.seq - b.seq)
       held.clear()
       if (rest.length > 0) nextSeq = rest[rest.length - 1].seq + 1
-      justFlushed = true
       return rest
     },
 
