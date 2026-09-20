@@ -63,11 +63,16 @@ fillDefaults()
 
 import { summaryTiles, outageLine } from './lib/present.js'
 import { warningMessage } from './lib/warnings.js'
+import { createOutageList } from './lib/outage-list.js'
 
 const resultPanel = document.querySelector('#result')
 const tilesEl = document.querySelector('#tiles')
 const outagesEl = document.querySelector('#outages')
 const warningsEl = document.querySelector('#warnings')
+
+// 실행 하나를 넘어 살아있다. 실행이 새로 시작될 때는 reset() 으로 비운다 —
+// 목록과 렌더 위치, 중복 검사가 한 객체 안에 있어서 리셋을 깜빡할 수 없다.
+const outageList = createOutageList()
 
 function renderSummary(summary) {
   tilesEl.innerHTML = summaryTiles(summary).map((t) => `
@@ -83,26 +88,29 @@ function renderSummary(summary) {
   }).join('')
 }
 
-/** 이미 그린 순단 개수. 새로 들어온 것만 덧붙이기 위해 기억한다. */
-let renderedOutages = 0
-
-function renderOutages(outages) {
-  if (outages.length === 0) {
+function renderOutages() {
+  if (outageList.isEmpty()) {
     outagesEl.innerHTML = '<li class="empty">아직 끊긴 구간이 없습니다.</li>'
-    renderedOutages = 0
     return
   }
   // 첫 순단이 들어오면 "아직 없습니다" 자리를 비운다
-  if (renderedOutages === 0) outagesEl.innerHTML = ''
+  if (outagesEl.querySelector('.empty')) outagesEl.innerHTML = ''
 
-  for (let i = renderedOutages; i < outages.length; i += 1) {
+  for (const outage of outageList.takeUnrendered()) {
     const item = document.createElement('li')
-    item.className = outages[i].ongoing ? 'ongoing is-new' : 'is-new'
+    item.className = outage.ongoing ? 'ongoing is-new' : 'is-new'
     // textContent 로 넣는다. 대상 앱이 돌려준 값이 섞여 들어올 수 있다.
-    item.textContent = outageLine(outages[i])
+    item.textContent = outageLine(outage)
     outagesEl.append(item)
   }
-  renderedOutages = outages.length
+}
+
+/** 새 실행을 시작할 때 이전 실행의 결과가 화면에 남지 않도록 지운다 */
+function resetResults() {
+  tilesEl.innerHTML = ''
+  warningsEl.innerHTML = ''
+  outageList.reset()
+  renderOutages()
 }
 
 window.addEventListener('run:started', ({ detail }) => {
@@ -111,16 +119,17 @@ window.addEventListener('run:started', ({ detail }) => {
   document.querySelector('#export-json').href = `/api/runs/${detail.runId}/export.json`
   document.querySelector('#export-k6').href = `/api/runs/${detail.runId}/export.k6.js`
 
-  const outages = []
+  resetResults()
   const source = new EventSource(`/api/runs/${detail.runId}/stream`)
 
   source.addEventListener('bucket', (e) => {
     window.dispatchEvent(new CustomEvent('run:bucket', { detail: JSON.parse(e.data) }))
   })
   source.addEventListener('outage', (e) => {
-    outages.push(JSON.parse(e.data))
-    renderOutages(outages)
-    window.dispatchEvent(new CustomEvent('run:outages', { detail: outages }))
+    // SSE 재연결 시 서버가 기존 순단을 다시 보낼 수 있다. 중복이면 무시한다.
+    if (!outageList.add(JSON.parse(e.data))) return
+    renderOutages()
+    window.dispatchEvent(new CustomEvent('run:outages', { detail: outageList.all() }))
   })
   source.addEventListener('summary', (e) => renderSummary(JSON.parse(e.data)))
   source.addEventListener('state', (e) => {
