@@ -3890,15 +3890,20 @@ git commit -m "feat: 설정 폼과 포맷 유틸"
  */
 export function createOutageList() {
   const items = []
+  // startTs 로 중복을 가려낸다. 순단 검출기는 한 실행 안에서 같은 startTs 를
+  // 두 번 내보내지 않으므로 안전한 키다.
+  const seenStartTs = new Set()
+  // 이미 그린 개수. 배열과 같은 객체 안에 있어서 실행이 바뀔 때 함께 리셋된다.
   let rendered = 0
 
   return {
     /**
-     * 순단을 추가한다. 시작 시각이 같은 것이 이미 있으면 무시한다.
+     * 순단을 추가한다. 이미 받은 시작 시각이면 무시한다.
      * @returns {boolean} 새로 추가됐는지
      */
     add(outage) {
-      if (items.some((seen) => seen.startTs === outage.startTs)) return false
+      if (seenStartTs.has(outage.startTs)) return false
+      seenStartTs.add(outage.startTs)
       items.push(outage)
       return true
     },
@@ -3918,9 +3923,14 @@ export function createOutageList() {
       return items.length === 0
     },
 
-    /** 새 측정을 시작할 때 목록과 렌더링 위치를 함께 되돌린다. */
+    /**
+     * 새 측정을 시작할 때 목록, 중복 검사, 렌더 위치를 함께 되돌린다.
+     * 배열을 새로 만들지 않고 비운다 — all() 로 받아 간 참조를 들고 있는
+     * 쪽(그래프)이 이전 실행의 내용을 계속 보지 않게 하기 위해서다.
+     */
     reset() {
       items.length = 0
+      seenStartTs.clear()
       rendered = 0
     },
   }
@@ -4552,6 +4562,15 @@ import { createChart } from './chart.js'
 const chart = createChart(document.querySelector('#chart'))
 const liveBuckets = []
 let liveOutages = []
+
+// 새 측정이 시작되면 그래프 상태도 비운다. 비우지 않으면 같은 탭에서
+// 두 번째 측정을 돌릴 때 2차 버킷이 1차 위에 이어 붙어, 두 실행이
+// 한 그래프에 섞여 그려진다.
+window.addEventListener('run:started', () => {
+  liveBuckets.length = 0
+  liveOutages = []
+  chart.update(liveBuckets, liveOutages)
+})
 
 window.addEventListener('run:bucket', ({ detail }) => {
   liveBuckets.push(detail)
