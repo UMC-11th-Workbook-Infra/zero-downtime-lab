@@ -144,6 +144,26 @@ test('state 이벤트로 상태 변화를 알린다', async () => {
   assert.deepEqual(seen, ['running', 'finished'])
 })
 
+test('리스너가 자신을 콜백 안에서 해제해도 다음 리스너는 건너뛰지 않는다', async () => {
+  // SSE 쪽에서 실제로 하는 일: state 리스너 콜백 안에서 자기 구독을 해제한다.
+  // emit() 이 원본 배열을 그대로 순회하면, 해제로 배열이 앞으로 당겨지면서
+  // 바로 다음 리스너가 건너뛰어진다 (뷰어가 둘 이상일 때 한쪽이 마지막
+  // summary 를 못 받는 문제로 이어진다).
+  const calls = []
+  const run = createRun({ scenario, prober: fakeProber([rec(1, 0, 'success')]) })
+  const unsubscribeFirst = run.on('state', () => {
+    calls.push('first')
+    unsubscribeFirst()
+  })
+  run.on('state', (s) => calls.push('second:' + s.status))
+  await run.start()
+
+  // state 는 'running' 과 'finished' 두 번 발생한다.
+  // 원본 배열을 그대로 순회하면 'running' 디스패치 도중 first 가 스스로를
+  // 지우면서 같은 디스패치의 second 가 건너뛰어져 ['first', 'second:finished'] 가 된다.
+  assert.deepEqual(calls, ['first', 'second:running', 'second:finished'])
+})
+
 test('백분위수는 응답을 받은 요청만으로 계산한다', async () => {
   const records = [
     rec(1, 0, 'success', { durationMs: 100 }),

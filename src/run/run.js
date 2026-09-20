@@ -38,7 +38,11 @@ export function createRun({ scenario, prober }) {
   let summaryTimer = null
 
   function emit(event, payload) {
-    for (const cb of listeners[event]) cb(payload)
+    // 사본을 순회한다. 리스너가 자기 자신이나 다른 리스너를 해제하면
+    // 원본 배열이 순회 도중 줄어들어 다음 리스너를 건너뛴다.
+    // SSE 핸들러가 실제로 state 리스너 안에서 구독을 전부 해제하므로
+    // 뷰어가 둘 이상일 때 한쪽이 마지막 요약을 못 받고 연결이 매달린다.
+    for (const cb of [...listeners[event]]) cb(payload)
   }
 
   function setStatus(next) {
