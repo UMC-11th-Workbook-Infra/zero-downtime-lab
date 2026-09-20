@@ -60,3 +60,74 @@ stopBtn.addEventListener('click', async () => {
 })
 
 fillDefaults()
+
+import { summaryTiles, outageLine } from './lib/present.js'
+import { warningMessage } from './lib/warnings.js'
+
+const resultPanel = document.querySelector('#result')
+const tilesEl = document.querySelector('#tiles')
+const outagesEl = document.querySelector('#outages')
+const warningsEl = document.querySelector('#warnings')
+
+function renderSummary(summary) {
+  tilesEl.innerHTML = summaryTiles(summary).map((t) => `
+    <div class="tile">
+      <div class="tile-label">${t.label}</div>
+      <div class="tile-value">${t.value}</div>
+      <div class="tile-sub">${t.sub}</div>
+    </div>`).join('')
+
+  warningsEl.innerHTML = summary.warnings.map((code) => {
+    const { title, body } = warningMessage(code)
+    return `<div class="warning"><strong>${title}</strong><p>${body}</p></div>`
+  }).join('')
+}
+
+/** 이미 그린 순단 개수. 새로 들어온 것만 덧붙이기 위해 기억한다. */
+let renderedOutages = 0
+
+function renderOutages(outages) {
+  if (outages.length === 0) {
+    outagesEl.innerHTML = '<li class="empty">아직 끊긴 구간이 없습니다.</li>'
+    renderedOutages = 0
+    return
+  }
+  // 첫 순단이 들어오면 "아직 없습니다" 자리를 비운다
+  if (renderedOutages === 0) outagesEl.innerHTML = ''
+
+  for (let i = renderedOutages; i < outages.length; i += 1) {
+    const item = document.createElement('li')
+    item.className = outages[i].ongoing ? 'ongoing is-new' : 'is-new'
+    // textContent 로 넣는다. 대상 앱이 돌려준 값이 섞여 들어올 수 있다.
+    item.textContent = outageLine(outages[i])
+    outagesEl.append(item)
+  }
+  renderedOutages = outages.length
+}
+
+window.addEventListener('run:started', ({ detail }) => {
+  window.currentRunId = detail.runId
+  resultPanel.hidden = false
+  document.querySelector('#export-json').href = `/api/runs/${detail.runId}/export.json`
+  document.querySelector('#export-k6').href = `/api/runs/${detail.runId}/export.k6.js`
+
+  const outages = []
+  const source = new EventSource(`/api/runs/${detail.runId}/stream`)
+
+  source.addEventListener('bucket', (e) => {
+    window.dispatchEvent(new CustomEvent('run:bucket', { detail: JSON.parse(e.data) }))
+  })
+  source.addEventListener('outage', (e) => {
+    outages.push(JSON.parse(e.data))
+    renderOutages(outages)
+    window.dispatchEvent(new CustomEvent('run:outages', { detail: outages }))
+  })
+  source.addEventListener('summary', (e) => renderSummary(JSON.parse(e.data)))
+  source.addEventListener('state', (e) => {
+    const { status } = JSON.parse(e.data)
+    if (status !== 'running') {
+      setFormDisabled(false)
+      source.close()
+    }
+  })
+})

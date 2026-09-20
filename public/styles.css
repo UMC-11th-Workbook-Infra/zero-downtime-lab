@@ -95,3 +95,29 @@ button:disabled { opacity: .5; cursor: default; transform: none; }
 .errors p { margin: 2px 0; }
 
 @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.tile { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.tile-label { font-size: 12px; color: var(--ink-dim); }
+.tile-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; margin: 2px 0; }
+.tile-sub { font-size: 12px; color: var(--ink-dim); min-height: 1.2em; }
+
+#result:not([hidden]) { animation: lab-enter 240ms var(--ease-out); }
+
+.warning {
+  border-left: 3px solid var(--warn); padding: 8px 12px; margin-bottom: 12px;
+  animation: lab-enter 200ms var(--ease-out);
+}
+.warning strong { color: var(--warn); }
+.warning p { margin: 2px 0 0; color: var(--ink-dim); font-size: 13px; }
+
+.outages { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.outages li {
+  font-variant-numeric: tabular-nums; font-size: 14px;
+  border-left: 3px solid var(--danger); padding: 6px 12px;
+}
+.outages li.empty { border-left-color: var(--line); color: var(--ink-dim); }
+.outages li.ongoing { border-left-style: dashed; }
+/* 새로 추가된 항목만 애니메이션한다. 목록을 통째로 다시 그리면
+   순단이 하나 늘 때마다 기존 항목이 전부 다시 튀어오른다. */
+.outages li.is-new { animation: lab-enter 200ms var(--ease-out); }
