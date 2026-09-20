@@ -85,7 +85,11 @@ export function validateScenario(input = {}) {
     errors.push('성공 상태코드는 100~599 사이의 정수여야 합니다.')
   }
 
-  const rps = num(input.load?.rps, DEFAULTS.load.rps, { min: 1, max: 200, label: '초당 요청 수' }, errors)
+  // 상한 1000 의 근거: 발사 슬롯은 setTimeout 이 잡는다. 1000 RPS 면 슬롯 간격이 1ms 이고,
+  // Node 의 타이머 해상도가 딱 그 규모라 그 이상은 슬롯을 제때 못 잡는다. 밀린 슬롯은
+  // dropped 로 세지므로 도구가 거짓말을 하지는 않지만, 숫자를 믿을 수 있는 범위가 아니다.
+  // 실측으로 500 RPS(2ms 슬롯)까지는 dropped 가 무시할 수준이었다.
+  const rps = num(input.load?.rps, DEFAULTS.load.rps, { min: 1, max: 1000, label: '초당 요청 수' }, errors)
 
   const errorCountBeforeDuration = errors.length
   const durationSec = num(input.load?.durationSec, DEFAULTS.load.durationSec, { min: 5, max: 3600, label: '실행 시간' }, errors)

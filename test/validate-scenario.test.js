@@ -37,7 +37,7 @@ test('메서드는 대소문자를 가리지 않고 대문자로 정규화한다
 
 test('rps 범위를 벗어나면 거절한다', () => {
   assert.equal(validateScenario({ ...minimal, load: { rps: 0 } }).ok, false)
-  assert.equal(validateScenario({ ...minimal, load: { rps: 500 } }).ok, false)
+  assert.equal(validateScenario({ ...minimal, load: { rps: 5000 } }).ok, false)
 })
 
 test('성공 상태코드가 비어 있으면 거절한다', () => {
@@ -69,11 +69,11 @@ test('DEFAULTS 는 그대로 검증을 통과한다', () => {
 })
 
 // 경계값 테스트: rps
-test('rps 경계: 1과 200은 수락, 0과 201은 거절', () => {
+test('rps 경계: 1과 1000은 수락, 0과 1001은 거절', () => {
   assert.equal(validateScenario({ ...minimal, load: { rps: 1 } }).ok, true)
-  assert.equal(validateScenario({ ...minimal, load: { rps: 200 } }).ok, true)
+  assert.equal(validateScenario({ ...minimal, load: { rps: 1000 } }).ok, true)
   assert.equal(validateScenario({ ...minimal, load: { rps: 0 } }).ok, false)
-  assert.equal(validateScenario({ ...minimal, load: { rps: 201 } }).ok, false)
+  assert.equal(validateScenario({ ...minimal, load: { rps: 1001 } }).ok, false)
 })
 
 // 경계값 테스트: durationSec
