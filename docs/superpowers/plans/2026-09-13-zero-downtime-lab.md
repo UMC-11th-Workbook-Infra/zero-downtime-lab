@@ -2474,10 +2474,12 @@ git commit -m "feat: 실행 오케스트레이션과 메모리 보관소"
 | `target.timeoutMs` | 100 ~ 60000. 기본 5000 |
 | `success.statusCodes` | 비어 있지 않은 정수 배열, 각 100~599. 기본 `[200, 201]` |
 | `load.rps` | 1 ~ 200. 기본 20 |
-| `load.durationSec` | 5 ~ 3600. 기본 300 |
-| `analysis.slowThresholdMs` | 1 이상. 기본 1000 |
+| `load.durationSec` | 5 ~ 3600. 기본 300. 단 `baselineSec` 이 최소 5이고 `durationSec` 보다 **엄격히** 작아야 하므로 실질 하한은 6이다 — `durationSec: 5` 는 어떤 조합으로도 통과할 수 없다 |
+| `analysis.slowThresholdMs` | 1 ~ 60000. 기본 1000 (타임아웃 상한과 같다. 그보다 느린 "성공"은 존재할 수 없다) |
 | `analysis.baselineSec` | 5 이상이고 `durationSec` 미만. 기본 30 |
-| `analysis.minConsecutiveFailures` | 1 이상. 기본 3 |
+| `analysis.minConsecutiveFailures` | 1 ~ 100. 기본 3 |
+
+`target.body` 를 아예 생략하면 빈 문자열이 된다. `DEFAULTS.target.body` 의 회원가입 템플릿이 아니다 — 그 템플릿은 폼에 처음 보여줄 값이고, 바디 없이 보낸 요청에 멋대로 채워 넣으면 곤란하다.
 
 `rps` 상한 200은 이 도구가 부하테스트용이 아니기 때문이다. 유실 측정에 필요한 것은 꾸준한 저빈도 탐침이지 높은 처리량이 아니다.
 
