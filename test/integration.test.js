@@ -97,6 +97,14 @@ test('타임아웃으로 끊겨 완료 순서가 뒤집혀도 순단은 1건이�
   // 여기서는 응답을 붙잡아 타임아웃을 낸다. 그러면 먼저 발사된 실패가
   // 나중에 발사된 성공보다 늦게 완료된다 — 순서를 복원하지 않으면
   // 연속 실패 구간이 성공으로 잘려 순단이 여러 건으로 쪼개진다.
+  //
+  // 실측으로 확인한 판별력: sequence-buffer 를 무력화하면 순단이 1회에서
+  // 8회로 늘어 이 테스트가 실패한다. 단, 아래 두 조건이 함께여야 한다.
+  //   (1) 회복 시점에 붙잡은 응답을 끊지 않을 것 — 끊으면 대기 요청이
+  //       동시에 실패해 순서 뒤집힘 자체가 사라진다
+  //   (2) minConsecutiveFailures 를 1 로 둘 것 — 기본값 3 은 회복 구간의
+  //       1:1 교차를 흡수해 버린다
+  // 둘 중 하나만 빠져도 무력화 상태에서 그대로 통과한다.
   t.diagnostic('응답을 3초간 붙잡아 타임아웃을 만든다')
 
   let hanging = false
@@ -125,7 +133,11 @@ test('타임아웃으로 끊겨 완료 순서가 뒤집혀도 순단은 1건이�
     },
     success: { statusCodes: [201] },
     load: { rps: 20, durationSec: 8 },
-    analysis: { slowThresholdMs: 1000, baselineSec: 1, minConsecutiveFailures: 3 },
+    // minConsecutiveFailures 를 1 로 두는 것이 이 테스트의 판별식이다.
+    // 회복 직후 구간에서 타임아웃과 성공이 1:1 로 번갈아 완료되는데,
+    // 기본값 3 이면 그 교차가 임계에 못 미쳐 순단으로 잡히지 않는다.
+    // 1 이면 순서 복원이 깨졌을 때 교차마다 순단이 하나씩 생겨 드러난다.
+    analysis: { slowThresholdMs: 1000, baselineSec: 1, minConsecutiveFailures: 1 },
   }
 
   const run = createRun({ scenario, prober: createProber('internal') })
@@ -134,15 +146,18 @@ test('타임아웃으로 끊겨 완료 순서가 뒤집혀도 순단은 1건이�
     hanging = true
     await sleep(3000)
     hanging = false
-    // 클라이언트는 이미 타임아웃으로 끊었다. 남은 소켓만 정리한다.
-    held.forEach((res) => res.destroy())
-    held.length = 0
+    // 붙잡아 둔 응답은 여기서 건드리지 않는다. 지금 끊으면 대기 중이던
+    // 요청들이 한꺼번에 즉시 실패해서, 정작 만들려던 상황 — 먼저 발사된
+    // 실패가 나중에 발사된 성공보다 늦게 완료되는 것 — 이 사라진다.
+    // 클라이언트 타임아웃이 제 시간에 자연스럽게 나도록 둔다.
   })()
 
   try {
     await run.start()
   } finally {
     await script.catch(() => {})
+    held.forEach((res) => res.destroy())
+    held.length = 0
     await killServer(server)
   }
 
