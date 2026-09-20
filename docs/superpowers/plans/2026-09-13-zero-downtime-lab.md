@@ -3865,19 +3865,139 @@ git commit -m "feat: 설정 폼과 포맷 유틸"
 **Files:**
 - Create: `public/lib/warnings.js`
 - Create: `public/lib/present.js`
+- Create: `public/lib/outage-list.js`
 - Modify: `public/app.js` (SSE 구독과 렌더링 추가)
 - Modify: `public/styles.css` (결과 영역 스타일 추가)
 - Test: `test/present.test.js`
+- Test: `test/outage-list.test.js`
 
 **Interfaces:**
 - Consumes: `format.js` (T15), SSE 이벤트 (T13)
 - Produces:
   - `public/lib/warnings.js`: `warningMessage(code) -> { title, body }`
-  - `public/lib/present.js`:
+  - `public/lib/outage-list.js`:
+
+```js
+/**
+ * 순단 목록의 상태를 들고 있는다.
+ *
+ * 화면에 이미 그린 개수를 목록 자신이 함께 관리한다. 둘을 떼어 놓으면
+ * 두 번째 측정을 시작할 때 목록만 비워지고 카운터는 남아, 새 순단이
+ * 화면에 안 나타나는 상태가 된다.
+ *
+ * 중복 제거도 여기서 한다. 브라우저가 SSE 를 재연결하면 서버가 이미
+ * 보낸 순단을 전부 다시 보내기 때문이다.
+ */
+export function createOutageList() {
+  const items = []
+  let rendered = 0
+
+  return {
+    /**
+     * 순단을 추가한다. 시작 시각이 같은 것이 이미 있으면 무시한다.
+     * @returns {boolean} 새로 추가됐는지
+     */
+    add(outage) {
+      if (items.some((seen) => seen.startTs === outage.startTs)) return false
+      items.push(outage)
+      return true
+    },
+
+    /** 아직 화면에 그리지 않은 것들을 돌려주고 그린 것으로 표시한다. */
+    takeUnrendered() {
+      const rest = items.slice(rendered)
+      rendered = items.length
+      return rest
+    },
+
+    all() {
+      return items
+    },
+
+    isEmpty() {
+      return items.length === 0
+    },
+
+    /** 새 측정을 시작할 때 목록과 렌더링 위치를 함께 되돌린다. */
+    reset() {
+      items.length = 0
+      rendered = 0
+    },
+  }
+}
+```
+
+`public/lib/present.js`:
     - `summaryTiles(summary) -> Array<{ label, value, sub }>`
     - `outageLine(outage) -> string`
 
 - [ ] **Step 1: 실패하는 테스트 작성**
+
+`test/outage-list.test.js`:
+
+```js
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { createOutageList } from '../public/lib/outage-list.js'
+
+const outage = (startTs) => ({ startTs, endTs: startTs + 1000, durationMs: 1000, failureCount: 20, byType: {}, ongoing: false })
+
+test('새 순단을 받아들인다', () => {
+  const list = createOutageList()
+  assert.equal(list.add(outage(1000)), true)
+  assert.equal(list.all().length, 1)
+})
+
+test('시작 시각이 같으면 두 번 들어가지 않는다', () => {
+  const list = createOutageList()
+  list.add(outage(1000))
+  assert.equal(list.add(outage(1000)), false)
+  assert.equal(list.all().length, 1)
+})
+
+test('SSE 재연결로 전부 재전송돼도 중복이 쌓이지 않는다', () => {
+  const list = createOutageList()
+  const replay = [outage(1000), outage(2000)]
+  replay.forEach((o) => list.add(o))
+  replay.forEach((o) => list.add(o)) // 재연결
+  assert.deepEqual(list.all().map((o) => o.startTs), [1000, 2000])
+})
+
+test('takeUnrendered 는 아직 안 그린 것만 준다', () => {
+  const list = createOutageList()
+  list.add(outage(1000))
+  assert.deepEqual(list.takeUnrendered().map((o) => o.startTs), [1000])
+  list.add(outage(2000))
+  assert.deepEqual(list.takeUnrendered().map((o) => o.startTs), [2000])
+})
+
+test('연속으로 부르면 두 번째는 비어 있다', () => {
+  const list = createOutageList()
+  list.add(outage(1000))
+  list.takeUnrendered()
+  assert.deepEqual(list.takeUnrendered(), [])
+})
+
+test('reset 하면 목록과 렌더링 위치가 함께 돌아간다', () => {
+  const list = createOutageList()
+  list.add(outage(1000))
+  list.add(outage(2000))
+  list.takeUnrendered()
+
+  list.reset()
+  assert.equal(list.isEmpty(), true)
+  // 2차 측정의 첫 순단이 바로 그려져야 한다
+  list.add(outage(9000))
+  assert.deepEqual(list.takeUnrendered().map((o) => o.startTs), [9000])
+})
+
+test('reset 후에는 같은 시작 시각도 다시 받아들인다', () => {
+  const list = createOutageList()
+  list.add(outage(1000))
+  list.reset()
+  assert.equal(list.add(outage(1000)), true)
+})
+```
 
 `test/present.test.js`:
 
@@ -4066,6 +4186,7 @@ export function outageLine(outage) {
 ```js
 import { summaryTiles, outageLine } from './lib/present.js'
 import { warningMessage } from './lib/warnings.js'
+import { createOutageList } from './lib/outage-list.js'
 
 const resultPanel = document.querySelector('#result')
 const tilesEl = document.querySelector('#tiles')
@@ -4086,26 +4207,32 @@ function renderSummary(summary) {
   }).join('')
 }
 
-/** 이미 그린 순단 개수. 새로 들어온 것만 덧붙이기 위해 기억한다. */
-let renderedOutages = 0
+const outageList = createOutageList()
 
-function renderOutages(outages) {
-  if (outages.length === 0) {
+function renderOutages() {
+  if (outageList.isEmpty()) {
     outagesEl.innerHTML = '<li class="empty">아직 끊긴 구간이 없습니다.</li>'
-    renderedOutages = 0
     return
   }
   // 첫 순단이 들어오면 "아직 없습니다" 자리를 비운다
-  if (renderedOutages === 0) outagesEl.innerHTML = ''
+  const placeholder = outagesEl.querySelector('.empty')
+  if (placeholder !== null) outagesEl.innerHTML = ''
 
-  for (let i = renderedOutages; i < outages.length; i += 1) {
+  for (const outage of outageList.takeUnrendered()) {
     const item = document.createElement('li')
-    item.className = outages[i].ongoing ? 'ongoing is-new' : 'is-new'
+    item.className = outage.ongoing ? 'ongoing is-new' : 'is-new'
     // textContent 로 넣는다. 대상 앱이 돌려준 값이 섞여 들어올 수 있다.
-    item.textContent = outageLine(outages[i])
+    item.textContent = outageLine(outage)
     outagesEl.append(item)
   }
-  renderedOutages = outages.length
+}
+
+/** 새 실행이 시작되면 이전 실행의 흔적을 지운다. */
+function resetResults() {
+  outageList.reset()
+  tilesEl.innerHTML = ''
+  warningsEl.innerHTML = ''
+  renderOutages()
 }
 
 window.addEventListener('run:started', ({ detail }) => {
@@ -4113,17 +4240,20 @@ window.addEventListener('run:started', ({ detail }) => {
   resultPanel.hidden = false
   document.querySelector('#export-json').href = `/api/runs/${detail.runId}/export.json`
   document.querySelector('#export-k6').href = `/api/runs/${detail.runId}/export.k6.js`
+  // 같은 페이지에서 두 번째 측정을 돌리면 이전 결과가 남아 있다
+  resetResults()
 
-  const outages = []
   const source = new EventSource(`/api/runs/${detail.runId}/stream`)
 
   source.addEventListener('bucket', (e) => {
     window.dispatchEvent(new CustomEvent('run:bucket', { detail: JSON.parse(e.data) }))
   })
   source.addEventListener('outage', (e) => {
-    outages.push(JSON.parse(e.data))
-    renderOutages(outages)
-    window.dispatchEvent(new CustomEvent('run:outages', { detail: outages }))
+    // 브라우저가 재연결하면 서버가 이미 보낸 순단을 전부 다시 보낸다.
+    // 순단의 시작 시각은 한 실행 안에서 고유하므로 그것으로 중복을 거른다.
+    if (!outageList.add(JSON.parse(e.data))) return
+    renderOutages()
+    window.dispatchEvent(new CustomEvent('run:outages', { detail: outageList.all() }))
   })
   source.addEventListener('summary', (e) => renderSummary(JSON.parse(e.data)))
   source.addEventListener('state', (e) => {
@@ -4169,7 +4299,7 @@ window.addEventListener('run:started', ({ detail }) => {
 - [ ] **Step 4: 테스트 통과 확인**
 
 Run: `npm test -- test/present.test.js`
-Expected: PASS — 11 tests
+Expected: PASS — 18 tests (present 11 + outage-list 7)
 
 - [ ] **Step 5: 커밋**
 
