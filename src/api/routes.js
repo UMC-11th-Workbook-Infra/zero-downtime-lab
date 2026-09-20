@@ -4,6 +4,7 @@ import { openSseStream } from './sse.js'
 import { createRun } from '../run/run.js'
 import { createRunStore } from '../run/run-store.js'
 import { createProber } from '../prober/index.js'
+import { toK6Script } from '../export/k6-script.js'
 
 /**
  * 라우트가 붙은 Express 앱을 만든다. listen 은 호출부의 몫이다.
@@ -52,6 +53,21 @@ export function createApp({ store = createRunStore({ max: 10 }), proberFactory =
       startedAt: run.startedAt,
       finishedAt: run.finishedAt,
     })))
+  })
+
+  app.get('/api/runs/:id/export.json', (req, res) => {
+    const run = store.get(req.params.id)
+    if (run === undefined) return res.status(404).json({ errors: ['없는 실행입니다.'] })
+    res.set('Content-Disposition', `attachment; filename="lab-${run.id.slice(0, 8)}.json"`)
+    res.json({ scenario: run.scenario, summary: run.summary(), buckets: run.buckets() })
+  })
+
+  app.get('/api/runs/:id/export.k6.js', (req, res) => {
+    const run = store.get(req.params.id)
+    if (run === undefined) return res.status(404).json({ errors: ['없는 실행입니다.'] })
+    res.set('Content-Type', 'application/javascript; charset=utf-8')
+    res.set('Content-Disposition', 'attachment; filename="deploy-test.js"')
+    res.send(toK6Script(run.scenario))
   })
 
   app.get('/api/runs/:id', (req, res) => {
