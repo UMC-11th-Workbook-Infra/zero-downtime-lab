@@ -101,10 +101,12 @@ export function createApp({ store = createRunStore({ max: 10 }), proberFactory =
       run.on('state', (state) => stream.send('state', state)),
     ]
 
-    // 실행이 끝나면 마지막 요약을 보내고 연결을 닫는다
+    // 실행이 끝나면 연결을 닫는다. 종료 state 는 run 이 마지막으로 내보내는
+    // 이벤트로 보장돼 있어(run.js 참고) 그 앞에 이미 마지막 summary 가
+    // 나가 있다 — 여기서 다시 보낼 필요가 없고, 다시 보내봐야 state 뒤에
+    // 실려 나가 클라이언트가 close() 한 뒤 버려질 뿐이다.
     off.push(run.on('state', (state) => {
       if (state.status === 'running') return
-      stream.send('summary', run.summary())
       finish()
     }))
 

@@ -36,6 +36,8 @@ export function createRun({ scenario, prober }) {
   let sawSuccess = false
   let networkStreak = 0
   let summaryTimer = null
+  /** stop() 이 불렸는지. 종료 상태를 finished/stopped 로 가를 때 쓴다. */
+  let stopRequested = false
 
   function emit(event, payload) {
     // 사본을 순회한다. 리스너가 자기 자신이나 다른 리스너를 해제하면
@@ -115,8 +117,12 @@ export function createRun({ scenario, prober }) {
 
     // 한 번도 성공한 적 없이 network 실패만 이어진다 = 애초에 닿은 적이 없다.
     // 그대로 durationSec 을 다 돌리는 것은 시간 낭비다.
+    //
+    // 여기서 state 를 emit 하지 않는다. 이 시점엔 아직 마지막 버킷/순단이
+    // 만들어지지 않았다 — 종료 state 는 start() 의 finally 에서 모든 것을
+    // 내보낸 다음 마지막으로 한 번만 나가야 리스너가 그 전에 끊기지 않는다.
     if (!sawSuccess && networkStreak >= UNREACHABLE_STREAK && status === 'running') {
-      setStatus('unreachable')
+      status = 'unreachable'
       prober.stop()
     }
   }
@@ -158,13 +164,21 @@ export function createRun({ scenario, prober }) {
         if (lastOutage !== null) emit('outage', lastOutage)
 
         finishedAt = Date.now()
-        if (status === 'running') setStatus('finished')
+        // 종료 state 는 이 실행이 마지막으로 내보내는 이벤트여야 한다.
+        // 그래야 SSE 핸들러가 state 를 받고 구독을 끊기 전에 요약이 이미
+        // 나가 있다. summary 를 먼저, state 를 정말 마지막으로 emit 한다.
+        if (status === 'running') status = stopRequested ? 'stopped' : 'finished'
         emit('summary', summary())
+        emit('state', { status, runId: id })
       }
     },
 
     stop() {
-      if (status === 'running') setStatus('stopped')
+      // 여기서 상태를 바꾸거나 state 를 emit 하지 않는다. 실제 종료 상태와
+      // 이벤트는 start() 의 finally 에서, 프로버가 완전히 멎은 뒤에만 나간다.
+      // 예전에는 여기서 즉시 'stopped' 로 표시해 프로버가 아직 드레이닝
+      // 중인데도 새 실행이 동시에 시작될 수 있었다.
+      stopRequested = true
       prober.stop()
     },
   }
