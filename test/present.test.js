@@ -63,6 +63,19 @@ test('진행 중인 순단은 그렇게 표시한다', () => {
   assert.ok(line.includes('진행 중'))
 })
 
+test('베이스라인이 아직 끝나지 않았으면 "평소" 대신 측정 중이라고 보여준다', () => {
+  // baseline.complete 가 false 인데 failureRate/p95 가 이미 null 이 아닌
+  // 경우 — 측정 시작 직후 표본 몇 개로 계산된 값이다. 이걸 "평소"라고
+  // 부르면 거짓 확신을 준다.
+  const incomplete = {
+    ...summary,
+    baseline: { complete: false, sampleCount: 20, failureRate: 0, clientFailureRate: 0, p95: 80 },
+  }
+  const tiles = summaryTiles(incomplete)
+  assert.equal(tiles.find((t) => t.label === '실패율').sub, '평소 측정 중')
+  assert.equal(tiles.find((t) => t.label === 'p95 지연').sub, '평소 측정 중')
+})
+
 test('표본이 없어도 타일이 깨지지 않는다', () => {
   const empty = {
     ...summary,
