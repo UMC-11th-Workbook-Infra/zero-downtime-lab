@@ -82,3 +82,28 @@ test('GET 에는 바디를 붙이지 않는다', () => {
   const get = { ...scenario, target: { ...scenario.target, method: 'GET', body: '' } }
   assert.ok(toK6Script(get).includes('http.get'))
 })
+
+test('URL 의 아포스트로피와 이름의 줄바꿈을 이스케이프해 구문을 깨뜨리지 않는다', () => {
+  // url 은 '...' 작은따옴표 문자열 리터럴 안에, scenario.name 은 // 한 줄
+  // 주석 뒤에 그대로 꽂힌다. 이스케이프 없이 넣으면 아포스트로피가 문자열을
+  // 조기 종료시키고, 이름의 줄바꿈이 주석을 끊어 다음 줄이 코드로 해석된다.
+  const tricky = {
+    ...scenario,
+    name: '위험한 이름\nconst pwned = true',
+    target: { ...scenario.target, url: "https://api.example.com/users/it's-a-trap?x=1" },
+  }
+
+  const dir = mkdtempSync(join(tmpdir(), 'k6-'))
+  const file = join(dir, 'injection.mjs')
+  const out = toK6Script(tricky)
+  writeFileSync(file, out)
+  // 예외가 나지 않으면 구문이 올바른 것이다 — 아포스트로피나 줄바꿈이
+  // 이스케이프되지 않았다면 여기서 구문 오류가 난다.
+  execFileSync(process.execPath, ['--check', file])
+
+  assert.ok(out.includes("it\\'s-a-trap"), 'URL 의 아포스트로피가 이스케이프돼야 한다')
+  assert.ok(!out.includes("'https://api.example.com/users/it's-a-trap?x=1'"),
+    '이스케이프되지 않은 아포스트로피가 그대로 남아있으면 안 된다')
+  assert.ok(!out.includes('// 위험한 이름\nconst pwned = true'),
+    '이름의 줄바꿈이 주석 밖으로 코드를 이어붙이면 안 된다')
+})

@@ -1,3 +1,7 @@
+/** JS 한 줄 주석과 작은따옴표 문자열 리터럴을 둘 다 끝내버리는 두 줄바꿈류 문자 */
+const LINE_SEPARATOR = String.fromCodePoint(0x2028) // U+2028 LINE SEPARATOR
+const PARAGRAPH_SEPARATOR = String.fromCodePoint(0x2029) // U+2029 PARAGRAPH SEPARATOR
+
 /**
  * 문자열을 템플릿 리터럴 안에 넣을 수 있게 만들고 플레이스홀더를 k6 표현식으로 바꾼다.
  *
@@ -13,6 +17,37 @@ function toTemplateLiteralBody(text) {
     .replace(/\{\{counter\}\}/g, '${__VU}_${__ITER}')
     .replace(/\{\{timestamp\}\}/g, '${Date.now()}')
     .replace(/\{\{random\}\}/g, '${randomToken()}')
+}
+
+/**
+ * 작은따옴표(') 문자열 리터럴 안에 그대로 넣을 수 있게 이스케이프한다.
+ *
+ * url 은 폼 입력값이라 아포스트로피나 줄바꿈이 섞여 들어올 수 있다.
+ * 이스케이프 없이 '${url}' 로 찍으면 문자열이 조기 종료되며 스크립트가
+ * 구문 오류가 나거나, 최악의 경우 그 뒤에 임의의 코드가 이어붙는다.
+ */
+function toSingleQuotedLiteral(text) {
+  return String(text ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')
+    .split(LINE_SEPARATOR).join('\\u2028')
+    .split(PARAGRAPH_SEPARATOR).join('\\u2029')
+}
+
+/**
+ * 한 줄 주석(//) 뒤에 그대로 넣을 수 있게 줄바꿈류 문자를 없앤다.
+ *
+ * JS 의 한 줄 주석은 LF/CR/U+2028/U+2029 어느 것으로도 끝난다. scenario.name
+ * 에 줄바꿈이 있으면 주석이 거기서 끊기고 다음 줄이 스크립트 코드로
+ * 해석돼 구문이 깨진다.
+ */
+function toCommentSafe(text) {
+  return String(text ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .split(LINE_SEPARATOR).join(' ')
+    .split(PARAGRAPH_SEPARATOR).join(' ')
 }
 
 /**
@@ -45,9 +80,10 @@ export function toK6Script(scenario) {
   const codes = JSON.stringify(scenario.success.statusCodes)
   const hasBody = method !== 'GET' && method !== 'HEAD'
   const call = `http.${method.toLowerCase()}`
+  const safeUrl = toSingleQuotedLiteral(url)
 
   return `// zero-downtime-lab 에서 내보낸 k6 스크립트
-// 시나리오: ${scenario.name}
+// 시나리오: ${toCommentSafe(scenario.name)}
 //
 // 실행:  k6 run deploy-test.js
 //
@@ -101,8 +137,8 @@ export default function () {
   }
 
 ${hasBody
-    ? `  // 회원가입은 같은 값으로 두 번 부르면 두 번째가 실패하므로 매번 고유한 값을 만든다\n  const body = \`${toTemplateLiteralBody(body)}\`\n  const res = ${call}('${url}', body, params)`
-    : `  const res = ${call}('${url}', params)`}
+    ? `  // 회원가입은 같은 값으로 두 번 부르면 두 번째가 실패하므로 매번 고유한 값을 만든다\n  const body = \`${toTemplateLiteralBody(body)}\`\n  const res = ${call}('${safeUrl}', body, params)`
+    : `  const res = ${call}('${safeUrl}', params)`}
 
   check(res, {
     '성공 상태코드': (r) => SUCCESS_CODES.indexOf(r.status) !== -1,

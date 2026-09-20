@@ -106,6 +106,34 @@ test('응답하지 않는 서버는 timeout 실패가 되고 durationMs 는 null
   }
 })
 
+test('레코드의 ts 는 발사 시각이다 (응답이 온 시각이 아니다)', async () => {
+  // 스펙상 record.ts 는 요청이 나간 시각이어야 한다. 완료 시각으로
+  // 바뀌어도 기존 171개 테스트는 전부 통과하므로, 응답을 일부러 늦게
+  // 돌려주는 대상을 세워 발사 시각과 가깝다는 것을 직접 단언해야 한다.
+  const DELAY_MS = 500
+  const server = await startServer((req, res) => {
+    setTimeout(() => { res.writeHead(200); res.end('ok') }, DELAY_MS)
+  })
+  try {
+    const records = []
+    const before = Date.now()
+    const s = scenarioFor(server.url, {
+      target: { timeoutMs: 5000 },
+      load: { rps: 5, durationSec: 1 },
+    })
+    await createProber('internal').start(s, (r) => records.push(r))
+
+    assert.ok(records.length > 0, '레코드가 하나도 안 왔다')
+    const fireLag = records[0].ts - before
+    // 완료 시각이었다면 fireLag 는 DELAY_MS(500ms) 근처였을 것이다.
+    // 발사 시각이라면 스케줄러가 바로 쏘므로 훨씬 작아야 한다.
+    assert.ok(fireLag < DELAY_MS / 2,
+      `ts 가 발사 시각이 아니라 완료 시각에 가깝다 (fireLag=${fireLag}ms, 지연=${DELAY_MS}ms)`)
+  } finally {
+    await server.close()
+  }
+})
+
 test('redirect: manual 이라 302 는 따라가지 않고 client 실패로 기록된다', async () => {
   // 배포가 유지보수 페이지로 리다이렉트되는 경우를 흉내낸다. 리다이렉트를
   // 따라가면 최종적으로 200 을 받아 "성공"으로 잘못 기록된다 — 배포가
