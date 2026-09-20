@@ -165,3 +165,26 @@ window.addEventListener('run:outages', ({ detail }) => {
   liveOutages = detail
   chart.update(liveBuckets, liveOutages)
 })
+
+/**
+ * 새로고침 등으로 페이지가 다시 열렸을 때 실행 중이던 측정을 이어 붙인다.
+ *
+ * F5 전에는 서버가 계속 돌고 있는데 브라우저 쪽 상태(window.currentRunId,
+ * 폼 잠금, Stop 버튼)만 사라진다. 그대로 다시 시작하려 하면 409 "먼저
+ * 중지해주세요"를 받는데, 중지 버튼이 없으니 따를 수 없는 조언이다.
+ *
+ * GET /api/runs 로 실행 중인 것이 있는지 확인하고, 있으면 그 실행에 대해
+ * run:started 를 다시 발생시킨다 — SSE 재구독, 결과 패널, 내보내기
+ * 링크, Stop 버튼이 전부 처음 시작할 때와 같은 경로로 복원된다. 놓친
+ * 버킷/순단은 SSE 쪽의 캐치업 재생이 채워준다.
+ */
+async function restoreRunningRun() {
+  const runs = await (await fetch('/api/runs')).json()
+  const running = runs.find((r) => r.status === 'running')
+  if (running === undefined) return
+
+  setFormDisabled(true)
+  window.dispatchEvent(new CustomEvent('run:started', { detail: { runId: running.runId } }))
+}
+
+restoreRunningRun()
