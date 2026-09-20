@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>배포 유실 측정</title>
+  <link rel="stylesheet" href="vendor/uPlot.min.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -72,6 +73,7 @@
     <section class="panel" id="result" hidden>
       <div id="warnings"></div>
       <div id="tiles" class="tiles"></div>
+      <div id="chart" class="chart"></div>
       <h3>순단 구간</h3>
       <ul id="outages" class="outages"><li class="empty">아직 끊긴 구간이 없습니다.</li></ul>
       <div class="actions">
@@ -81,6 +83,7 @@
     </section>
   </main>
 
+  <script src="vendor/uPlot.iife.min.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>

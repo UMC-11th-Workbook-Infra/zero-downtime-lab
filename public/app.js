@@ -140,3 +140,28 @@ window.addEventListener('run:started', ({ detail }) => {
     }
   })
 })
+
+import { createChart } from './chart.js'
+
+const chart = createChart(document.querySelector('#chart'))
+const liveBuckets = []
+let liveOutages = []
+
+// 새 측정이 시작되면 그래프 상태도 비운다. 비우지 않으면 같은 탭에서
+// 두 번째 측정을 돌릴 때 2차 버킷이 1차 위에 이어 붙어, 두 실행이
+// 한 그래프에 섞여 그려진다.
+window.addEventListener('run:started', () => {
+  liveBuckets.length = 0
+  liveOutages = []
+  chart.update(liveBuckets, liveOutages)
+})
+
+window.addEventListener('run:bucket', ({ detail }) => {
+  liveBuckets.push(detail)
+  chart.update(liveBuckets, liveOutages)
+})
+
+window.addEventListener('run:outages', ({ detail }) => {
+  liveOutages = detail
+  chart.update(liveBuckets, liveOutages)
+})

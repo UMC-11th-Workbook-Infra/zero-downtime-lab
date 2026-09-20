@@ -121,3 +121,6 @@ button:disabled { opacity: .5; cursor: default; transform: none; }
 /* 새로 추가된 항목만 애니메이션한다. 목록을 통째로 다시 그리면
    순단이 하나 늘 때마다 기존 항목이 전부 다시 튀어오른다. */
 .outages li.is-new { animation: lab-enter 200ms var(--ease-out); }
+
+.chart { margin: 0 0 24px; min-height: 260px; }
+.chart .u-legend { font-size: 12px; }
