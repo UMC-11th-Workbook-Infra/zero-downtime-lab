@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>배포 유실 측정</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="page-head">
+    <h1>배포 유실 측정</h1>
+    <p class="lede">부하를 걸어둔 채 평소대로 배포하세요. 끊긴 구간이 아래에 찍힙니다.</p>
+  </header>
+
+  <main>
+    <section class="panel" id="setup">
+      <h2>측정 설정</h2>
+      <form id="scenario-form">
+        <label>대상 주소
+          <input name="url" type="url" placeholder="https://api.example.com/users/signup" required>
+        </label>
+        <label>메서드
+          <select name="method">
+            <option>POST</option><option>GET</option><option>PUT</option>
+            <option>PATCH</option><option>DELETE</option>
+          </select>
+        </label>
+        <label>헤더 <span class="hint">한 줄에 하나씩, <code>이름: 값</code></span>
+          <textarea name="headersText" rows="3"></textarea>
+        </label>
+        <label>요청 바디
+          <textarea name="body" rows="4"></textarea>
+          <span class="hint">
+            매 요청 고유한 값이 필요합니다.
+            <code>{{uuid}}</code> <code>{{counter}}</code> <code>{{timestamp}}</code> <code>{{random}}</code> 를 쓰세요.
+            나중에 지우기 쉽도록 <code>lab-</code> 같은 접두어를 붙여두길 권합니다.
+          </span>
+        </label>
+        <label>성공으로 볼 상태코드
+          <input name="statusCodesText" placeholder="200, 201">
+          <span class="hint">중복 가입에 409를 주는 앱이라면 409도 넣으세요.</span>
+        </label>
+        <div class="row">
+          <label>초당 요청 수<input name="rps" type="number" min="1" max="200"></label>
+          <label>실행 시간(초)<input name="durationSec" type="number" min="5" max="3600"></label>
+        </div>
+
+        <details class="advanced">
+          <summary>고급 설정</summary>
+          <div class="row">
+            <label>타임아웃(ms)<input name="timeoutMs" type="number" min="100" max="60000"></label>
+            <label>지연 임계값(ms)<input name="slowThresholdMs" type="number" min="1"></label>
+          </div>
+          <div class="row">
+            <label>베이스라인 구간(초)<input name="baselineSec" type="number" min="5"></label>
+            <label>최소 연속 실패 수<input name="minConsecutiveFailures" type="number" min="1"></label>
+          </div>
+          <p class="hint">
+            베이스라인은 배포 전 평상시 구간입니다. 모든 수치를 이 기준과의 차이로 읽습니다.
+            최소 연속 실패 수는 인터넷 구간의 단발 실패를 순단으로 오인하지 않기 위한 값입니다.
+          </p>
+        </details>
+
+        <div id="form-errors" class="errors" hidden></div>
+        <div class="actions">
+          <button type="submit" id="start-btn">측정 시작</button>
+          <button type="button" id="stop-btn" hidden>중지</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel" id="result" hidden>
+      <div id="warnings"></div>
+      <div id="tiles" class="tiles"></div>
+      <h3>순단 구간</h3>
+      <ul id="outages" class="outages"><li class="empty">아직 끊긴 구간이 없습니다.</li></ul>
+      <div class="actions">
+        <a id="export-json" download>결과 JSON 내려받기</a>
+        <a id="export-k6" download>k6 스크립트 내려받기</a>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
