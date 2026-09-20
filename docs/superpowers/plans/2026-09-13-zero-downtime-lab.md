@@ -3745,7 +3745,14 @@ fillDefaults()
 `public/styles.css` — 토큰을 먼저 정의하고 그 위에 쌓는다. 라이트/다크 모두 명시한다.
 
 ```css
+/* 모션 원칙
+   - 초당 갱신되는 것(타일 수치, 그래프)은 애니메이션하지 않는다. 한 번 실행에
+     수백 번 반복되므로 움직임은 정보 전달을 방해하기만 한다.
+   - 드물게 한 번 나타나는 것(결과 패널, 경고, 순단 항목)에만 진입 모션을 준다.
+   - 버튼 누름 피드백은 항상 준다. 인터페이스가 입력을 들었다는 즉각적 신호다. */
+
 :root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --bg: #fbfbfa;
   --panel: #ffffff;
   --ink: #1c1b1a;
@@ -3810,9 +3817,26 @@ button, .actions a {
   font: inherit; font-weight: 600; cursor: pointer;
   padding: 9px 16px; border-radius: 6px; border: 1px solid transparent;
   background: var(--accent); color: #fff; text-decoration: none;
+  transition: transform 160ms var(--ease-out), opacity 160ms ease;
 }
 button[type="button"], .actions a { background: transparent; color: var(--ink); border-color: var(--line); }
-button:disabled { opacity: .5; cursor: default; }
+/* 눌렀을 때 살짝 줄어든다. 스케일은 자식까지 함께 줄여서 버튼 전체가 눌린 느낌이 된다. */
+button:not(:disabled):active, .actions a:active { transform: scale(0.97); }
+button:disabled { opacity: .5; cursor: default; transform: none; }
+
+/* 한 번만 나타나는 요소의 진입. scale(0) 에서 시작하지 않는다 —
+   현실에서 무에서 튀어나오는 것은 없다. */
+@keyframes lab-enter {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 움직임만 걷어내고 불투명도 변화는 남긴다. 이해를 돕는 쪽은 유지한다. */
+  button:not(:disabled):active, .actions a:active { transform: none; }
+  @keyframes lab-enter {
+    from { opacity: 0; }
+  }
+}
 
 .errors { border-left: 3px solid var(--danger); padding: 8px 12px; color: var(--danger); }
 .errors p { margin: 2px 0; }
@@ -4062,10 +4086,26 @@ function renderSummary(summary) {
   }).join('')
 }
 
+/** 이미 그린 순단 개수. 새로 들어온 것만 덧붙이기 위해 기억한다. */
+let renderedOutages = 0
+
 function renderOutages(outages) {
-  outagesEl.innerHTML = outages.length === 0
-    ? '<li class="empty">아직 끊긴 구간이 없습니다.</li>'
-    : outages.map((o) => `<li class="${o.ongoing ? 'ongoing' : ''}">${outageLine(o)}</li>`).join('')
+  if (outages.length === 0) {
+    outagesEl.innerHTML = '<li class="empty">아직 끊긴 구간이 없습니다.</li>'
+    renderedOutages = 0
+    return
+  }
+  // 첫 순단이 들어오면 "아직 없습니다" 자리를 비운다
+  if (renderedOutages === 0) outagesEl.innerHTML = ''
+
+  for (let i = renderedOutages; i < outages.length; i += 1) {
+    const item = document.createElement('li')
+    item.className = outages[i].ongoing ? 'ongoing is-new' : 'is-new'
+    // textContent 로 넣는다. 대상 앱이 돌려준 값이 섞여 들어올 수 있다.
+    item.textContent = outageLine(outages[i])
+    outagesEl.append(item)
+  }
+  renderedOutages = outages.length
 }
 
 window.addEventListener('run:started', ({ detail }) => {
@@ -4105,7 +4145,12 @@ window.addEventListener('run:started', ({ detail }) => {
 .tile-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; margin: 2px 0; }
 .tile-sub { font-size: 12px; color: var(--ink-dim); min-height: 1.2em; }
 
-.warning { border-left: 3px solid var(--warn); padding: 8px 12px; margin-bottom: 12px; }
+#result:not([hidden]) { animation: lab-enter 240ms var(--ease-out); }
+
+.warning {
+  border-left: 3px solid var(--warn); padding: 8px 12px; margin-bottom: 12px;
+  animation: lab-enter 200ms var(--ease-out);
+}
 .warning strong { color: var(--warn); }
 .warning p { margin: 2px 0 0; color: var(--ink-dim); font-size: 13px; }
 
@@ -4116,6 +4161,9 @@ window.addEventListener('run:started', ({ detail }) => {
 }
 .outages li.empty { border-left-color: var(--line); color: var(--ink-dim); }
 .outages li.ongoing { border-left-style: dashed; }
+/* 새로 추가된 항목만 애니메이션한다. 목록을 통째로 다시 그리면
+   순단이 하나 늘 때마다 기존 항목이 전부 다시 튀어오른다. */
+.outages li.is-new { animation: lab-enter 200ms var(--ease-out); }
 ```
 
 - [ ] **Step 4: 테스트 통과 확인**
