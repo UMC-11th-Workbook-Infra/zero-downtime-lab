@@ -86,14 +86,20 @@ export function validateScenario(input = {}) {
   }
 
   const rps = num(input.load?.rps, DEFAULTS.load.rps, { min: 1, max: 200, label: '초당 요청 수' }, errors)
+
+  const errorCountBeforeDuration = errors.length
   const durationSec = num(input.load?.durationSec, DEFAULTS.load.durationSec, { min: 5, max: 3600, label: '실행 시간' }, errors)
+  const durationHasError = errors.length > errorCountBeforeDuration
 
   const slowThresholdMs = num(input.analysis?.slowThresholdMs, DEFAULTS.analysis.slowThresholdMs, { min: 1, max: 60_000, label: '지연 임계값' }, errors)
   const userBaselineSec = input.analysis?.baselineSec
+  const errorCountBeforeBaseline = errors.length
   const baselineSec = num(userBaselineSec, DEFAULTS.analysis.baselineSec, { min: 5, max: 3600, label: '베이스라인 구간' }, errors)
+  const baselineHasError = errors.length > errorCountBeforeBaseline
+
   const minConsecutiveFailures = num(input.analysis?.minConsecutiveFailures, DEFAULTS.analysis.minConsecutiveFailures, { min: 1, max: 100, label: '최소 연속 실패 수' }, errors)
 
-  if (baselineSec >= durationSec) {
+  if (!durationHasError && !baselineHasError && baselineSec >= durationSec) {
     const reportedBaseline = userBaselineSec === undefined || userBaselineSec === null || userBaselineSec === '' ? baselineSec : userBaselineSec
     errors.push(`베이스라인 구간(${reportedBaseline}초)은 실행 시간(${durationSec}초)보다 짧아야 합니다.`)
   }

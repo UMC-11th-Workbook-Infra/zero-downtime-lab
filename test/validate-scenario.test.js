@@ -121,3 +121,21 @@ test('baselineSec 경계: duration과 같으면 거절, 한 칸 작으면 수락
   assert.equal(validateScenario({ ...minimal, load: { durationSec: 100 }, analysis: { baselineSec: 100 } }).ok, false)
   assert.equal(validateScenario({ ...minimal, load: { durationSec: 100 }, analysis: { baselineSec: 99 } }).ok, true)
 })
+
+// 교차 필드 검증: 범위 오류가 있으면 교차 필드 검사를 건너뛴다
+test('baselineSec이 범위를 벗어나면 교차 필드 검사를 수행하지 않는다', () => {
+  const out = validateScenario({ ...minimal, load: { durationSec: 20 }, analysis: { baselineSec: 1 } })
+  assert.equal(out.ok, false)
+  assert.equal(out.errors.length, 1)
+  assert.ok(out.errors[0].includes('베이스라인 구간'))
+  assert.ok(out.errors[0].includes('5 이상'))
+})
+
+// 교차 필드 검증: 두 필드가 모두 유효하면 교차 필드 검사를 수행한다
+test('두 필드가 모두 범위 내이면 교차 필드 검사를 수행한다', () => {
+  const out = validateScenario({ ...minimal, load: { durationSec: 20 }, analysis: { baselineSec: 30 } })
+  assert.equal(out.ok, false)
+  assert.equal(out.errors.length, 1)
+  assert.ok(out.errors[0].includes('베이스라인 구간'))
+  assert.ok(out.errors[0].includes('실행 시간'))
+})
