@@ -2772,7 +2772,13 @@ function appWith(records = DEFAULT_RECORDS) {
   return createApp({ store: createRunStore({ max: 10 }), proberFactory: fakeProberFactory(records) })
 }
 
-const body = { target: { url: 'https://api.example.com/signup' }, load: { durationSec: 10 } }
+// baselineSec 을 명시한다. 기본값 30 은 durationSec 10 보다 크므로
+// 교차 검사(baselineSec < durationSec)에 걸려 400 이 된다.
+const body = {
+  target: { url: 'https://api.example.com/signup' },
+  load: { durationSec: 10 },
+  analysis: { baselineSec: 5 },
+}
 
 test('GET /api/defaults 는 폼 기본값을 준다', async () => {
   const { base, close } = await listen(appWith())
