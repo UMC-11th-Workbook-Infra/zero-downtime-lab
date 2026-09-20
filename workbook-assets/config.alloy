@@ -1,0 +1,170 @@
+// UMC Infra 워크북 2주차 — Grafana Alloy 설정
+//
+// 이 파일은 "옮겨 적는 것"이 목적이 아닙니다. 그대로 쓰고,
+// 아래 네 블록이 각각 무엇을 하는지만 읽고 넘어가세요.
+//
+//   1. 호스트 지표  — CPU·메모리·디스크. 인스턴스 안에서만 보인다
+//   2. MySQL 지표   — RDS 에 붙는다
+//   3. 앱 지표      — 앱이 여는 /metrics
+//   4. 앱 로그      — 앱이 stdout 에 찍은 것 (2주차 3장, 선택)
+//
+// 필요한 환경변수 (모두 SSM Parameter Store 에서 온다 — 1주차 3.4)
+//   GC_PROM_URL  GC_PROM_USER
+//   GC_LOKI_URL  GC_LOKI_USER
+//   GC_TOKEN
+//   MYSQL_DSN    예: exporter:비밀번호@(movie-db.xxxx.ap-northeast-2.rds.amazonaws.com:3306)/
+//
+// 실행 (2주차 2.3 의 docker run 을 그대로 쓰세요)
+
+// ============================================================
+// 보내는 곳 — Grafana Cloud
+// ============================================================
+
+prometheus.remote_write "gc" {
+	endpoint {
+		url = sys.env("GC_PROM_URL")
+
+		basic_auth {
+			username = sys.env("GC_PROM_USER")
+			password = sys.env("GC_TOKEN")
+		}
+	}
+}
+
+loki.write "gc" {
+	endpoint {
+		url = sys.env("GC_LOKI_URL")
+
+		basic_auth {
+			username = sys.env("GC_LOKI_USER")
+			password = sys.env("GC_TOKEN")
+		}
+	}
+}
+
+// ============================================================
+// 1. 호스트 지표 — CPU · 메모리 · 디스크
+// ============================================================
+//
+// 왜 필요한가: EC2 를 바깥에서 보면 메모리와 디스크 사용률을 알 수 없습니다.
+// 하이퍼바이저는 게스트가 메모리를 실제로 쓰는지 비어 있는지 모릅니다.
+// 그래서 인스턴스 "안에" 수집기를 둡니다. (1주차 3.10)
+
+prometheus.exporter.unix "host" {
+	// 컨테이너로 돌리므로 호스트 파일시스템을 /rootfs 로 마운트해 두고 그쪽을 본다.
+	// docker run 의 -v /:/rootfs:ro 와 --pid host 가 이것 때문에 필요하다.
+	rootfs_path = "/rootfs"
+	procfs_path = "/rootfs/proc"
+	sysfs_path  = "/rootfs/sys"
+
+	filesystem {
+		// 컨테이너 레이어와 가상 파일시스템은 디스크 사용률에서 뺀다.
+		// 안 빼면 이미지를 받을 때마다 디스크 그래프가 요동친다.
+		mount_points_exclude = "^/(dev|proc|sys|run|var/lib/docker/.+)($|/)"
+		fs_types_exclude     = "^(autofs|binfmt_misc|cgroup.*|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|mqueue|nsfs|overlay|proc|procfs|pstore|securityfs|selinuxfs|squashfs|sysfs|tracefs)$"
+	}
+}
+
+prometheus.scrape "host" {
+	targets         = prometheus.exporter.unix.host.targets
+	forward_to      = [prometheus.remote_write.gc.receiver]
+	job_name        = "host"
+	scrape_interval = "15s"
+}
+
+// ============================================================
+// 2. MySQL 지표 — RDS
+// ============================================================
+//
+// 전용 사용자를 하나 만들고 SELECT, PROCESS, REPLICATION CLIENT 만 주세요.
+// 애플리케이션 계정을 쓰지 않습니다.
+//
+//   CREATE USER 'exporter'@'%' IDENTIFIED BY '...';
+//   GRANT SELECT, PROCESS, REPLICATION CLIENT ON *.* TO 'exporter'@'%';
+
+prometheus.exporter.mysql "rds" {
+	data_source_name = sys.env("MYSQL_DSN")
+}
+
+discovery.relabel "rds" {
+	targets = prometheus.exporter.mysql.rds.targets
+
+	// ⚠️ 인스턴스 2대가 "같은" RDS 를 각자 긁습니다.
+	// instance 를 그대로 두면 같은 DB 지표가 호스트 이름별로 두 벌 생겨
+	// 그래프에 똑같은 선이 두 줄 그려집니다.
+	// 여기서 instance 를 DB 로 고정하고, 누가 긁었는지는 collector 로 남깁니다.
+	// 그래서 질의할 때 max() 로 감쌉니다 — 2주차 2.5 참고.
+	rule {
+		target_label = "instance"
+		replacement  = "rds"
+	}
+
+	rule {
+		target_label = "collector"
+		replacement  = constants.hostname
+	}
+}
+
+prometheus.scrape "rds" {
+	targets         = discovery.relabel.rds.output
+	forward_to      = [prometheus.remote_write.gc.receiver]
+	job_name        = "mysql"
+	scrape_interval = "15s"
+}
+
+// ============================================================
+// 3. 앱 지표 — 앱이 직접 내는 것 (2주차 2.4)
+// ============================================================
+//
+// --network host 로 돌리므로 127.0.0.1 로 앱에 닿습니다.
+
+prometheus.scrape "app" {
+	targets = [
+		{"__address__" = "127.0.0.1:3000"},
+	]
+
+	forward_to      = [prometheus.remote_write.gc.receiver]
+	job_name        = "app"
+	metrics_path    = "/metrics"
+	scrape_interval = "15s"
+}
+
+// ============================================================
+// 4. 앱 로그 — stdout → Loki  (2주차 3장. 선택)
+// ============================================================
+//
+// 앱은 stdout 으로만 찍으면 됩니다. 파일로 남기거나 로테이션을 걸 필요가 없습니다.
+// 3장을 건너뛸 거라면 이 블록을 지워도 나머지는 그대로 동작합니다.
+
+discovery.docker "local" {
+	host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "app_logs" {
+	targets = discovery.docker.local.targets
+
+	// 앱 컨테이너만 남긴다. alloy 자기 로그까지 보내면 무료 한도가 빨리 닳는다.
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/app"
+		action        = "keep"
+	}
+
+	// ⚠️ 라벨은 적게. 요청마다 달라지는 값(request_id, member_id)을 여기 넣으면
+	// 스트림이 폭발합니다. 그런 건 본문에 두고 질의 시점에 파싱합니다. (2주차 3.1)
+	rule {
+		target_label = "service"
+		replacement  = "app"
+	}
+
+	rule {
+		target_label = "instance"
+		replacement  = constants.hostname
+	}
+}
+
+loki.source.docker "app" {
+	host       = "unix:///var/run/docker.sock"
+	targets    = discovery.relabel.app_logs.output
+	forward_to = [loki.write.gc.receiver]
+}
