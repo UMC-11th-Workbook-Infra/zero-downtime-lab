@@ -106,6 +106,33 @@ test('응답하지 않는 서버는 timeout 실패가 되고 durationMs 는 null
   }
 })
 
+test('redirect: manual 이라 302 는 따라가지 않고 client 실패로 기록된다', async () => {
+  // 배포가 유지보수 페이지로 리다이렉트되는 경우를 흉내낸다. 리다이렉트를
+  // 따라가면 최종적으로 200 을 받아 "성공"으로 잘못 기록된다 — 배포가
+  // 깨졌는데 "이상 없음"이라고 말하는 조용한 거짓말이다. internal-prober.js
+  // 의 redirect: 'manual' 이 이걸 막는다: 302 자체를 판정 대상으로 삼아야
+  // client 실패가 된다.
+  const server = await startServer((req, res) => {
+    if (req.url === '/signup') {
+      res.writeHead(302, { Location: '/maintenance' })
+      res.end()
+    } else {
+      res.writeHead(200)
+      res.end('ok')
+    }
+  })
+  try {
+    const records = []
+    await createProber('internal').start(scenarioFor(server.url), (r) => records.push(r))
+    assert.ok(records.length > 0)
+    assert.ok(records.every((r) => r.outcome === 'failure'), '302 를 성공으로 기록하면 안 된다')
+    assert.ok(records.every((r) => r.failureType === 'client'))
+    assert.ok(records.every((r) => r.status === 302))
+  } finally {
+    await server.close()
+  }
+})
+
 test('닿지 않는 주소는 network 실패가 된다', async () => {
   const records = []
   // 127.0.0.1 의 닫힌 포트 -> ECONNREFUSED
