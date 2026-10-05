@@ -1,0 +1,44 @@
+// 파이프라인 이름: umc_app_metrics
+// matcher:       collector.os = "linux"
+//
+// 2주차 2.4 에서 앱이 /metrics 를 열면 여기로 들어옵니다.
+// 그 전까지는 up{job="app"} 이 0 입니다 — 정상입니다.
+//
+// --network host 로 돌리므로 127.0.0.1 로 앱에 닿습니다.
+//
+// 필요한 환경변수
+//   GC_PROM_URL   GC_PROM_USER   GC_TOKEN
+
+discovery.relabel "app" {
+	targets = [
+		{"__address__" = "127.0.0.1:3000"},
+	]
+
+	// ⚠️ 이 한 줄이 없으면 인스턴스 2대가 **같은 시계열**에 씁니다.
+	// 주소가 양쪽 다 127.0.0.1:3000 이라 instance 라벨이 같아지기 때문입니다.
+	// 그러면 원격 쓰기에서 같은 타임스탬프에 값이 두 번 들어가 한쪽이 버려지고,
+	// "인스턴스별 비교" 가 아예 불가능해집니다. 호스트 이름으로 갈라놓습니다.
+	rule {
+		target_label = "instance"
+		replacement  = constants.hostname
+	}
+}
+
+prometheus.scrape "app" {
+	targets         = discovery.relabel.app.output
+	forward_to      = [prometheus.remote_write.gc_app.receiver]
+	job_name        = "app"
+	metrics_path    = "/metrics"
+	scrape_interval = "15s"
+}
+
+prometheus.remote_write "gc_app" {
+	endpoint {
+		url = sys.env("GC_PROM_URL")
+
+		basic_auth {
+			username = sys.env("GC_PROM_USER")
+			password = sys.env("GC_TOKEN")
+		}
+	}
+}

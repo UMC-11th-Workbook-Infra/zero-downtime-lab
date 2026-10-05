@@ -1,0 +1,53 @@
+// 파이프라인 이름: umc_app_logs
+// matcher:       collector.os = "linux"
+//
+// 2주차 3장(선택)에서 씁니다. 앱은 stdout 으로만 찍으면 됩니다 —
+// 파일로 남기거나 로테이션을 걸 필요가 없습니다.
+//
+// 필요한 환경변수
+//   GC_LOKI_URL   GC_LOKI_USER   GC_TOKEN
+
+discovery.docker "local" {
+	host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "app_logs" {
+	targets = discovery.docker.local.targets
+
+	// 앱 컨테이너만 남긴다. alloy 자기 로그까지 보내면 무료 한도가 빨리 닳는다.
+	// ⚠️ Docker 가 붙이는 이름은 슬래시로 시작합니다 — "/app" 이지 "app" 이 아닙니다.
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/app"
+		action        = "keep"
+	}
+
+	// ⚠️ 라벨은 적게. 요청마다 달라지는 값(request_id, member_id)을 여기 넣으면
+	// 스트림이 폭발합니다. 그런 건 본문에 두고 질의 시점에 파싱합니다. (2주차 3.1)
+	rule {
+		target_label = "service"
+		replacement  = "app"
+	}
+
+	rule {
+		target_label = "instance"
+		replacement  = constants.hostname
+	}
+}
+
+loki.source.docker "app" {
+	host       = "unix:///var/run/docker.sock"
+	targets    = discovery.relabel.app_logs.output
+	forward_to = [loki.write.gc_logs.receiver]
+}
+
+loki.write "gc_logs" {
+	endpoint {
+		url = sys.env("GC_LOKI_URL")
+
+		basic_auth {
+			username = sys.env("GC_LOKI_USER")
+			password = sys.env("GC_TOKEN")
+		}
+	}
+}

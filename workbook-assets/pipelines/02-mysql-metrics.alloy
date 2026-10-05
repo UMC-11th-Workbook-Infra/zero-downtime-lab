@@ -1,0 +1,49 @@
+// 파이프라인 이름: umc_mysql_metrics
+// matcher:       collector.os = "linux"
+//
+// RDS 에 그대로 붙습니다. 전용 사용자에 SELECT, PROCESS, REPLICATION CLIENT 만 주세요.
+//   CREATE USER 'exporter'@'%' IDENTIFIED BY '...';
+//   GRANT SELECT, PROCESS, REPLICATION CLIENT ON *.* TO 'exporter'@'%';
+//
+// 필요한 환경변수
+//   MYSQL_DSN   GC_PROM_URL   GC_PROM_USER   GC_TOKEN
+
+prometheus.exporter.mysql "rds" {
+	data_source_name = sys.env("MYSQL_DSN")
+}
+
+discovery.relabel "rds" {
+	targets = prometheus.exporter.mysql.rds.targets
+
+	// ⚠️ 인스턴스 2대가 "같은" RDS 를 각자 긁습니다.
+	// instance 를 그대로 두면 같은 DB 지표가 호스트 이름별로 두 벌 생겨
+	// 그래프에 똑같은 선이 두 줄 그려집니다.
+	// 여기서 instance 를 DB 로 고정하고, 누가 긁었는지는 collector 로 남깁니다.
+	// 그래서 질의할 때 max() 로 감쌉니다 — 2주차 2.5 참고.
+	rule {
+		target_label = "instance"
+		replacement  = "rds"
+	}
+
+	rule {
+		target_label = "collector"
+		replacement  = constants.hostname
+	}
+}
+
+prometheus.scrape "rds" {
+	targets         = discovery.relabel.rds.output
+	forward_to      = [prometheus.remote_write.gc_mysql.receiver]
+	scrape_interval = "15s"
+}
+
+prometheus.remote_write "gc_mysql" {
+	endpoint {
+		url = sys.env("GC_PROM_URL")
+
+		basic_auth {
+			username = sys.env("GC_PROM_USER")
+			password = sys.env("GC_TOKEN")
+		}
+	}
+}

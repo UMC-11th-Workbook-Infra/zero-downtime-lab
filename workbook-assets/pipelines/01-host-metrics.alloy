@@ -1,0 +1,40 @@
+// 파이프라인 이름: umc_host_metrics
+// matcher:       collector.os = "linux"
+//
+// CPU·메모리·디스크는 인스턴스 "안에서만" 보입니다. 하이퍼바이저는 게스트가
+// 메모리를 실제로 쓰는지 비어 있는지 모릅니다 — 1주차 3.10 에서 확인한 그것입니다.
+//
+// 필요한 환경변수 (인스턴스의 docker run 에서 넘깁니다)
+//   GC_PROM_URL   GC_PROM_USER   GC_TOKEN
+
+prometheus.exporter.unix "host" {
+	// 컨테이너로 돌리므로 호스트 파일시스템을 /rootfs 로 마운트해 두고 그쪽을 본다.
+	// docker run 의 -v /:/rootfs:ro 와 --pid host 가 이것 때문에 필요하다.
+	rootfs_path = "/rootfs"
+	procfs_path = "/rootfs/proc"
+	sysfs_path  = "/rootfs/sys"
+
+	filesystem {
+		// 컨테이너 레이어와 가상 파일시스템은 디스크 사용률에서 뺀다.
+		// 안 빼면 이미지를 받을 때마다 디스크 그래프가 요동친다.
+		mount_points_exclude = "^/(dev|proc|sys|run|var/lib/docker/.+)($|/)"
+		fs_types_exclude     = "^(autofs|binfmt_misc|cgroup.*|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|mqueue|nsfs|overlay|proc|procfs|pstore|securityfs|selinuxfs|squashfs|sysfs|tracefs)$"
+	}
+}
+
+prometheus.scrape "host" {
+	targets         = prometheus.exporter.unix.host.targets
+	forward_to      = [prometheus.remote_write.gc_host.receiver]
+	scrape_interval = "15s"
+}
+
+prometheus.remote_write "gc_host" {
+	endpoint {
+		url = sys.env("GC_PROM_URL")
+
+		basic_auth {
+			username = sys.env("GC_PROM_USER")
+			password = sys.env("GC_TOKEN")
+		}
+	}
+}
